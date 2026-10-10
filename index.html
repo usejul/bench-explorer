@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>decision-bench explorer · which decider fits your task?</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+:root{--bg:#0b0f17;--panel:#121826;--line:#1f2a3d;--txt:#e6ebf5;--mut:#8a97ad;--acc:#7c9cff;--ok:#3ddc97;--warn:#ffb547}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 Inter,system-ui,sans-serif}
+header{padding:28px 32px 12px}h1{margin:0;font-size:26px;letter-spacing:-.02em}h1 span{color:var(--acc)}
+header p{margin:6px 0 0;color:var(--mut)}
+.wrap{display:grid;grid-template-columns:320px 1fr;gap:18px;padding:12px 32px 40px}
+aside,.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+aside{position:sticky;top:12px;align-self:start;max-height:calc(100vh - 24px);overflow:auto}
+h3{margin:14px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}h3:first-child{margin-top:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:#0e1420;color:var(--txt);padding:5px 10px;border-radius:999px;cursor:pointer;font-size:12.5px;user-select:none}
+.chip:hover{border-color:var(--acc)}.chip.on{background:var(--acc);border-color:var(--acc);color:#0b0f17;font-weight:600}
+select,textarea{width:100%;background:#0e1420;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px;font:inherit}
+textarea{height:110px;font:12px/1.4 ui-monospace,Menlo,monospace;resize:vertical}
+button{background:var(--acc);border:0;color:#0b0f17;font-weight:600;padding:7px 12px;border-radius:8px;cursor:pointer}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--mut)}
+input[type=range]{width:100%}
+main{display:grid;gap:18px;grid-template-columns:1fr 1fr;align-content:start}
+.full{grid-column:1/-1}.card h2{margin:0 0 2px;font-size:15px}.card .sub{color:var(--mut);font-size:12px;margin-bottom:6px}
+.chart{height:380px}.tall{height:460px}
+.kpis{display:flex;gap:12px;flex-wrap:wrap}.kpi{flex:1;min-width:150px;background:#0e1420;border:1px solid var(--line);border-radius:12px;padding:12px}
+.kpi b{display:block;font-size:22px}.kpi span{color:var(--mut);font-size:12px}
+.banner{padding:10px 14px;border-radius:10px;font-size:13px;display:none}.banner.warn{display:block;background:#2a210f;border:1px solid #5a4415;color:var(--warn)}
+.parsed{margin-top:8px;color:var(--ok);font-size:12px;min-height:16px}
+footer{color:var(--mut);font-size:12px;padding:0 32px 30px}
+</style>
+</head>
+<body>
+<header>
+  <h1>decision-bench <span>explorer</span></h1>
+  <p>Which typed decider (Choice / Noul / Score) holds up on <em>your</em> case? Slice the bench to your needs, or paste your jul / Jev call.</p>
+</header>
+<div class="wrap">
+<aside>
+  <h3>Paste your jul / Jev call</h3>
+  <textarea id="req" placeholder='client.decide(Choice(options=["refund","shipping","other"]), text="...")'></textarea>
+  <div style="display:flex;gap:6px;margin-top:6px"><button id="parse">Analyze</button><button class="ghost" id="reset">Clear all</button></div>
+  <div class="parsed" id="parsed"></div>
+
+  <h3>Your task</h3>
+  <div class="sub" style="color:var(--mut);font-size:12px;margin-bottom:6px">Decision type</div><div class="chips" data-f="type"></div>
+  <div class="sub" style="color:var(--mut);font-size:12px;margin:8px 0 6px">Language</div><div class="chips" data-f="lang"></div>
+  <div class="sub" style="color:var(--mut);font-size:12px;margin:8px 0 6px">Text length</div><div class="chips" data-f="length"></div>
+  <div class="sub" style="color:var(--mut);font-size:12px;margin:8px 0 6px">Number of options (Choice)</div><div class="chips" data-f="options"></div>
+  <div class="sub" style="color:var(--mut);font-size:12px;margin:8px 0 6px">Domain</div><select id="domain" multiple size="6"></select>
+
+  <h3>The decider</h3>
+  <div class="sub" style="color:var(--mut);font-size:12px;margin-bottom:6px">Family</div><div class="chips" data-s="family"></div>
+  <div class="sub" style="color:var(--mut);font-size:12px;margin:8px 0 6px">Backend / runtime</div><div class="chips" data-s="backend"></div>
+  <div class="sub" style="color:var(--mut);font-size:12px;margin:8px 0 6px">Measured on</div><div class="chips" data-s="hardware"></div>
+  <div class="sub" style="color:var(--mut);font-size:12px;margin:8px 0 6px">Max size: <b id="sizev"></b></div>
+  <input type="range" id="size" min="0" max="5" step="1" value="5">
+  <div class="chips" style="margin-top:8px"><span class="chip" id="viajul">Runs with jul</span><span class="chip" id="openw">Open weights</span></div>
+</aside>
+<main>
+  <div class="card full">
+    <div class="kpis" id="kpis"></div>
+    <div class="banner" id="banner"></div>
+  </div>
+  <div class="card full"><h2>Ranking on your selection</h2><div class="sub">Accuracy with 95% confidence interval (Wilson). Click a bar to highlight a system.</div><div class="chart tall" id="rank"></div></div>
+  <div class="card"><h2>Accuracy vs latency</h2><div class="sub">p50 latency per call, log scale. Dot size = parameter count. ⚠️ measured on different hardware.</div><div class="chart" id="scatter"></div></div>
+  <div class="card"><h2>By type and length</h2><div class="sub">Click a cell to filter.</div><div class="chart" id="heat2"></div></div>
+  <div class="card full"><h2>By domain</h2><div class="sub">Click a cell to filter on that domain. Empty cell = fewer than 5 items.</div><div class="chart tall" id="heat"></div></div>
+</main>
+</div>
+<footer id="foot"></footer>
+<script>
+const SIZES=[0.2,1,2,4,8,Infinity],SIZEL=["≤ 200M","≤ 1B","≤ 2B","≤ 4B","≤ 8B","any"];
+const LBL={choice:"Choice",noul:"Noul (yes/no)",score:"Score",en:"English",fr:"French",short:"Short (≤ 384 tok)",medium:"Medium (≤ 1,024)",long:"Long (> 1,024)"};
+const PAL=["#7c9cff","#3ddc97","#ffb547","#ff6b8b","#b18cff","#4fd1ff","#f4e04d","#ff9f68"];
+let D,F={type:new Set,lang:new Set,length:new Set,options:new Set,domain:new Set},S={family:new Set,backend:new Set,hardware:new Set},size=5,viaJul=false,openW=false,focus=null;
+const $=s=>document.querySelector(s),ch={};
+const wilson=(k,n)=>{if(!n)return[0,0];const z=1.96,p=k/n,d=1+z*z/n,c=(p+z*z/(2*n))/d,h=z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n))/d;return[c-h,c+h]};
+const pct=v=>(100*v).toFixed(1);
+
+fetch("explorer.json").then(r=>r.json()).then(d=>{D=d;init();render()});
+
+function uniq(i){return[...new Set(D.cells.map(c=>c[i]))].filter(v=>v!=="-")}
+function init(){
+  const ord={length:["short","medium","long"],options:["2-3","4-6","7-10","11-15","16-21"]};
+  [["type",1],["lang",2],["length",3],["options",4]].forEach(([f,i])=>{
+    const vals=ord[f]?ord[f].filter(v=>uniq(i).includes(v)):uniq(i).sort();
+    const box=$(`[data-f=${f}]`);vals.forEach(v=>box.append(chip(LBL[v]||v,()=>tog(F[f],v),()=>F[f].has(v))))});
+  const dom=$("#domain");uniq(5).sort().forEach(v=>dom.append(new Option(v.replaceAll("_"," "),v)));
+  dom.onchange=()=>{F.domain=new Set([...dom.selectedOptions].map(o=>o.value));render()};
+  ["family","backend","hardware"].forEach(k=>{const box=$(`[data-s=${k}]`);[...new Set(D.systems.map(s=>s[k]))].sort().forEach(v=>box.append(chip(v,()=>tog(S[k],v),()=>S[k].has(v))))});
+  $("#size").oninput=e=>{size=+e.target.value;render()};
+  $("#viajul").onclick=()=>{viaJul=!viaJul;render()};$("#openw").onclick=()=>{openW=!openW;render()};
+  $("#parse").onclick=parseReq;$("#reset").onclick=()=>{Object.values(F).forEach(s=>s.clear());Object.values(S).forEach(s=>s.clear());size=5;viaJul=openW=false;focus=null;$("#req").value="";$("#parsed").textContent="";$("#size").value=5;[...$("#domain").options].forEach(o=>o.selected=false);render()};
+  ["rank","scatter","heat","heat2"].forEach(id=>{ch[id]=echarts.init(document.getElementById(id),null,{renderer:"canvas"})});
+  window.onresize=()=>Object.values(ch).forEach(c=>c.resize());
+  ch.rank.on("click",p=>{focus=focus===p.name?null:p.name;render()});
+  ch.heat.on("click",p=>{const v=D._doms[p.value[1]];tog(F.domain,v);syncDom()});
+  ch.heat2.on("click",p=>{const [t,l]=D._tl[p.value[0]];F.type=new Set([t]);F.length=new Set([l]);render()});
+  $("#foot").innerHTML=`Suite ${D.suite}, ${D.n_items} items (real-world questions plus a synthetic gap-fill). Only aggregated counts are published: no bench item is exposed. One decider = its latest complete run. Jev (TypeSafe) is the escalation tier of <a href="https://github.com/usejul/jul" style="color:#7c9cff">jul</a>: answer locally, hand only the unsure questions to Jev.`;
+}
+function chip(label,on,isOn){const c=document.createElement("span");c.className="chip";c.textContent=label;c.onclick=()=>{on();render()};c._on=isOn;return c}
+function tog(set,v){set.has(v)?set.delete(v):set.add(v)}
+function syncDom(){[...$("#domain").options].forEach(o=>o.selected=F.domain.has(o.value));render()}
+
+function sysOk(s){return(!S.family.size||S.family.has(s.family))&&(!S.backend.size||S.backend.has(s.backend))&&(!S.hardware.size||S.hardware.has(s.hardware))
+  &&(s.size_b==null?size===5:s.size_b<=SIZES[size])&&(!viaJul||s.via_jul)&&(!openW||s.open)}
+function cellOk(c,skip){const m=[["type",1],["lang",2],["length",3],["options",4],["domain",5]];
+  const sk=[].concat(skip||[]);return m.every(([f,i])=>sk.includes(f)||!F[f].size||F[f].has(c[i]))}
+function agg(pred){const r=D.systems.map(()=>({k:0,n:0,h:{}}));
+  for(const c of D.cells){if(!pred(c))continue;const a=r[c[0]];a.k+=c[6];a.n+=c[7];for(const b in c[8])a.h[b]=(a.h[b]||0)+c[8][b]}return r}
+function p50(h){const t=Object.values(h).reduce((a,b)=>a+b,0);if(!t)return null;let acc=0;for(const b of Object.keys(h).map(Number).sort((a,b)=>a-b)){acc+=h[b];if(acc>=t/2)return D.lat_edges[Math.min(b,D.lat_edges.length-1)]}}
+
+function render(){
+  document.querySelectorAll(".chip").forEach(c=>{if(c._on)c.classList.toggle("on",c._on())});
+  $("#viajul").classList.toggle("on",viaJul);$("#openw").classList.toggle("on",openW);$("#sizev").textContent=SIZEL[size];
+  const sys=D.systems.map((s,i)=>({...s,i})).filter(sysOk);
+  const A=agg(c=>cellOk(c));
+  const rows=sys.map(s=>{const a=A[s.i],[lo,hi]=wilson(a.k,a.n);return{...s,k:a.k,n:a.n,acc:a.n?a.k/a.n:0,lo,hi,lat:p50(a.h)}}).filter(r=>r.n).sort((a,b)=>b.acc-a.acc);
+  const n=rows.length?rows[0].n:0;
+  // KPIs
+  const best=rows[0];const ties=best?rows.filter(r=>r.hi>=best.lo).length:0;
+  $("#kpis").innerHTML=[[n,"items in your selection"],[best?best.label:"–","top of the ranking"],[best?pct(best.acc)+"%":"–","its accuracy"],[ties,"deciders statistically tied with it"]].map(([v,l])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("");
+  const bn=$("#banner");
+  if(n&&n<30){bn.className="banner warn";bn.textContent=`Only ${n} items: at ±${Math.round(98/Math.sqrt(n))} points, this ranking is not reliable. Loosen a filter (domain, number of options) to get at least 30 items.`}
+  else if(!n){bn.className="banner warn";bn.textContent="No item matches this combination."}else bn.className="banner";
+  const color=r=>PAL[[...new Set(D.systems.map(s=>s.family))].indexOf(r.family)%PAL.length];
+  // ranking with CI
+  const rr=[...rows].reverse();
+  ch.rank.setOption({backgroundColor:"transparent",grid:{left:210,right:60,top:10,bottom:30},
+    tooltip:{trigger:"item",formatter:p=>{const r=rr[p.dataIndex];return`<b>${r.label}</b><br>${pct(r.acc)} % (${r.k}/${r.n})<br>IC95 ${pct(r.lo)}–${pct(r.hi)} %<br>${r.backend} · ${r.hardware}${r.size_b?` · ${r.size_b} B`:""}<br>p50 latency ${r.lat?r.lat.toFixed(0)+" ms":"–"}`}},
+    xAxis:{type:"value",min:0,max:100,axisLabel:{color:"#8a97ad",formatter:"{value}%"},splitLine:{lineStyle:{color:"#1f2a3d"}}},
+    yAxis:{type:"category",data:rr.map(r=>r.label),axisLabel:{color:"#e6ebf5"}},
+    series:[{type:"bar",data:rr.map(r=>({value:+pct(r.acc),itemStyle:{color:color(r),opacity:!focus||focus===r.label?1:.25,borderRadius:[0,6,6,0]}})),label:{show:true,position:"insideLeft",color:"#0b0f17",fontWeight:600,formatter:"{c}%"},barMaxWidth:22},
+      {type:"custom",renderItem:(p,api)=>{const y=api.coord([0,api.value(0)])[1],a=api.coord([api.value(1),0])[0],b=api.coord([api.value(2),0])[0];
+        return{type:"group",children:[{type:"line",shape:{x1:a,y1:y,x2:b,y2:y},style:{stroke:"#e6ebf5",lineWidth:1.5}},{type:"line",shape:{x1:a,y1:y-5,x2:a,y2:y+5},style:{stroke:"#e6ebf5"}},{type:"line",shape:{x1:b,y1:y-5,x2:b,y2:y+5},style:{stroke:"#e6ebf5"}}]}},
+        data:rr.map((r,i)=>[i,100*r.lo,100*r.hi]),encode:{y:0},z:5,tooltip:{show:false}}],animationDuration:400},true);
+  // scatter
+  const hws=[...new Set(rows.map(r=>r.hardware))];
+  ch.scatter.setOption({backgroundColor:"transparent",grid:{left:50,right:20,top:30,bottom:40},legend:{top:0,textStyle:{color:"#8a97ad"}},
+    tooltip:{formatter:p=>`<b>${p.data[3]}</b><br>${p.data[1]} % · ${p.data[0].toFixed(0)} ms`},
+    xAxis:{type:"log",name:"ms",nameTextStyle:{color:"#8a97ad"},axisLabel:{color:"#8a97ad"},splitLine:{lineStyle:{color:"#1f2a3d"}}},
+    yAxis:{type:"value",max:100,axisLabel:{color:"#8a97ad",formatter:"{value}%"},splitLine:{lineStyle:{color:"#1f2a3d"}}},
+    series:hws.map((h,j)=>({name:h,type:"scatter",itemStyle:{color:PAL[(j+3)%PAL.length]},
+      symbolSize:d=>8+6*Math.sqrt(d[2]||4),labelLayout:{hideOverlap:true},label:{show:true,position:"right",color:"#8a97ad",fontSize:10,formatter:p=>p.data[3]},
+      data:rows.filter(r=>r.hardware===h&&r.lat).map(r=>[r.lat,+pct(r.acc),r.size_b,r.label])}))},true);
+  // heat by domain (domain filter itself ignored so the full row stays visible)
+  const doms=uniq(5).sort();D._doms=doms;
+  const hd=[];rows.forEach((r,y)=>doms.forEach((d,x)=>{let k=0,nn=0;for(const c of D.cells)if(c[0]===r.i&&c[5]===d&&cellOk(c,"domain")){k+=c[6];nn+=c[7]}if(nn>=5)hd.push([y,x,+pct(k/nn),nn])}));
+  ch.heat.setOption(heat(rows.map(r=>r.label),doms.map(d=>d.replaceAll("_"," ")),hd,d=>F.domain.has(doms[d[1]])),true);
+  // heat type x length
+  const tl=[];["choice","noul","score"].forEach(t=>["short","medium","long"].forEach(l=>tl.push([t,l])));D._tl=tl;
+  const h2=[];rows.forEach((r,y)=>tl.forEach(([t,l],x)=>{let k=0,nn=0;for(const c of D.cells)if(c[0]===r.i&&c[1]===t&&c[3]===l&&cellOk(c,["type","length"])){k+=c[6];nn+=c[7]}if(nn>=5)h2.push([x,y,+pct(k/nn),nn])}));
+  ch.heat2.setOption({...heat2(tl.map(([t,l])=>`${LBL[t].split(" ")[0]}\n${l}`),rows.map(r=>r.label),h2)},true);
+}
+function heat(ys,xs,data,sel){return{backgroundColor:"transparent",grid:{left:210,right:20,top:10,bottom:90},
+  tooltip:{formatter:p=>`${ys[p.value[0]]}<br>${xs[p.value[1]]}: <b>${p.value[2]}%</b> (n=${p.value[3]})`},
+  xAxis:{type:"category",data:xs,axisLabel:{color:"#8a97ad",rotate:45,fontSize:11,interval:0}},yAxis:{type:"category",data:ys,axisLabel:{color:"#e6ebf5"}},
+  visualMap:{dimension:2,min:30,max:100,show:false,inRange:{color:["#3b1d2e","#6b2f4a","#c2603a","#e8b04a","#3ddc97"]}},
+  series:[{type:"heatmap",data:data.map(d=>({value:[d[1],d[0],d[2],d[3]],itemStyle:sel(d)?{borderColor:"#fff",borderWidth:2}:{}})),
+    encode:{x:0,y:1},label:{show:true,color:"#0b0f17",fontSize:10,formatter:p=>Math.round(p.value[2])}}]}}
+function heat2(xs,ys,data){return{backgroundColor:"transparent",grid:{left:150,right:10,top:10,bottom:50},
+  tooltip:{formatter:p=>`${ys[p.value[1]]}<br>${xs[p.value[0]].replace("\n"," ")}: <b>${p.value[2]}%</b> (n=${p.value[3]})`},
+  xAxis:{type:"category",data:xs,axisLabel:{color:"#8a97ad",fontSize:10,interval:0}},yAxis:{type:"category",data:ys,axisLabel:{color:"#e6ebf5",fontSize:11}},
+  visualMap:{dimension:2,min:30,max:100,show:false,inRange:{color:["#3b1d2e","#6b2f4a","#c2603a","#e8b04a","#3ddc97"]}},
+  series:[{type:"heatmap",data:data,label:{show:true,color:"#0b0f17",fontSize:10,formatter:p=>Math.round(p.value[2])}}]}}
+
+// Request parser: runs in the browser only, nothing is sent anywhere.
+function parseReq(){
+  const q=$("#req").value;if(!q.trim())return;const out=[];
+  const t=/\bNoul\b|"type"\s*:\s*"noul"|yes.?no|oui.?non/i.test(q)?"noul":/\bScore\b|"type"\s*:\s*"score"|scale|levels/i.test(q)?"score":/\bChoice\b|options|choices|"type"\s*:\s*"choice"/i.test(q)?"choice":null;
+  Object.values(F).forEach(s=>s.clear());
+  if(t){F.type.add(t);out.push(LBL[t])}
+  if(t==="choice"){const m=q.match(/(?:options|choices|labels)\s*[=:]\s*\[([\s\S]*?)\]/i);
+    if(m){const n=(m[1].match(/("[^"]*"|'[^']*')/g)||[]).length;const bin=[[2,3],[4,6],[7,10],[11,15],[16,21]].find(([a,b])=>n>=a&&n<=b);if(bin){F.options.add(bin[0]===bin[1]?""+bin[0]:`${bin[0]}-${bin[1]}`);out.push(`${n} options`)}}}
+  const tm=q.match(/(?:text|state|input|context|content)\s*[=:]\s*(?:f?"""([\s\S]*?)"""|"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/i);
+  const txt=tm?(tm[1]||tm[2]||tm[3]||""):q;const tok=Math.round(txt.length/4);
+  const L=tok<=384?"short":tok<=1024?"medium":"long";F.length.add(L);out.push(`~${tok} tokens → ${LBL[L]}`);
+  const fr=(txt.match(/\b(le|la|les|des|est|une|pour|avec|vous|nous|je|pas|sur)\b|[éèàùç]/gi)||[]).length,en=(txt.match(/\b(the|is|and|you|with|for|this|not|are|of)\b/gi)||[]).length;
+  if(fr+en>=2){const lg=fr>en?"fr":"en";F.lang.add(lg);out.push(LBL[lg])}
+  syncDom();$("#parsed").textContent="Detected: "+out.join(" · ");
+}
+</script>
+</body>
+</html>
